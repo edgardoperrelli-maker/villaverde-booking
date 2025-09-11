@@ -1,0 +1,110 @@
+/* — Tailwind v4: devono stare per prime — */
+@import "tailwindcss";
+
+/* — Variabili tema — */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { --background: #0a0a0a; --foreground: #ededed; }
+}
+
+/* — Base — */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* === UI utili (CSS puro, niente @apply) === */
+.ui-container { max-width: 64rem; margin-left: auto; margin-right: auto; padding: 1.5rem; }
+
+.ui-card {
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  background-color: #fff;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  padding: 1.25rem;
+}
+
+.ui-row {
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  background-color: #fff;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  padding: 1rem;
+}
+
+.ui-row-head { display: flex; align-items: center; justify-content: space-between; }
+
+.ui-section-title { font-size: 1.125rem; font-weight: 600; color: #1e293b; }
+.ui-hint { font-size: 0.75rem; color: #64748b; }
+
+.ui-grid { display: grid; gap: 0.75rem; }
+
+.ui-grid-2 { display: grid; gap: 0.75rem; }
+@media (min-width: 640px) { .ui-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.ui-grid-3 { display: grid; gap: 0.75rem; }
+@media (min-width: 640px) { .ui-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.ui-grid-4 { display: grid; gap: 0.75rem; }
+@media (min-width: 640px) { .ui-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.ui-label { display: block; font-size: 0.875rem; font-weight: 500; color: #334155; margin-bottom: 0.25rem; }
+
+.ui-input,
+.ui-select,
+.ui-textarea {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid #cbd5e1;
+  background-color: #fff;
+  padding: 0.625rem 0.75rem;
+  font-size: 15px; /* (invece di text-[15px]) */
+  color: #0f172a;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  outline: none;
+}
+
+.ui-select { padding-right: 2rem; }
+.ui-input::placeholder,
+.ui-select::placeholder,
+.ui-textarea::placeholder { color: #94a3b8; }
+
+.ui-input:focus,
+.ui-select:focus,
+.ui-textarea:focus {
+  border-color: #94a3b8;
+  /* Focus ring “soft”: */
+  box-shadow: 0 0 0 4px #f1f5f9;
+}
+
+.ui-textarea { min-height: 90px; resize: vertical; }
+
+.ui-switch { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #334155; }
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: background-color .15s, border-color .15s, color .15s, fill .15s, stroke .15s;
+}
+
+.ui-btn-primary { background-color: #0f172a; color: #fff; }
+.ui-btn-primary:hover { background-color: #1e293b; }
+
+.ui-btn-ghost { border: 1px solid #cbd5e1; background-color: #fff; color: #1e293b; }
+.ui-btn-ghost:hover { background-color: #f8fafc; }
+
+.ui-btn-danger { border: 1px solid #fecdd3; background-color: #fff; color: #be123c; }
+.ui-btn-danger:hover { background-color: #fff1f2; }
