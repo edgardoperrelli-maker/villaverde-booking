@@ -1,6 +1,8 @@
 'use client';
+
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { useRouter } from 'next/navigation';
+import { supabase } from '../../lib/supabaseClient'; // usa '@/lib/supabaseClient' se hai l'alias
 
 type RateType = 'Singola' | 'Doppia' | 'Tripla' | 'Quadrupla';
 
@@ -67,6 +69,8 @@ type Item = {
 };
 
 export default function BookingsPage() {
+  const router = useRouter();
+
   const [rooms, setRooms] = useState<Room[]>([]);
   const [rates, setRates] = useState<Rate[]>([]);
   const [conventions, setConventions] = useState<Convention[]>([]);
@@ -262,7 +266,7 @@ export default function BookingsPage() {
     const customer_id = await resolveCustomerId();
     if (!customer_id) return;
 
-    // group id (via RPC o fallback)
+    // group id
     let groupId: string | undefined;
     try {
       const { data, error } = await supabase.rpc('uuid_generate_v4');
@@ -296,23 +300,31 @@ export default function BookingsPage() {
     });
 
     const { error } = await supabase.from('bookings').insert(payloads);
-    if (error) { alert('Errore salvataggio: ' + error.message); return; }
+    if (error) {
+      alert('Errore salvataggio: ' + error.message);
+      return;
+    }
 
     alert('Prenotazione salvata.');
-    // reset form
-    setKind('individual');
-    setUseExistingCompany(true); setCompanyId(''); setNewCompanyName(''); setNewCompanyPhone(''); setNewCompanyEmail(''); setNewCompanyNotes('');
-    setUseExistingIndividual(true); setIndividualId(''); setNewIndividualName(''); setNewIndividualPhone(''); setNewIndividualEmail(''); setNewIndividualNotes('');
-    setGuestFirst(''); setGuestLast(''); setGuestPhone(''); setGuestEmail('');
-    setCheckIn(''); setCheckOut(''); setDefaultPax(1);
-    setItems([{ roomId: '', pax: 1, rateTypeRow: 'Singola', conventionId: null, price: 0, useMainGuest: true }]);
+    router.push('/dashboard'); // redirect immediato
   }
 
   return (
     <main className="ui-container space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Nuova prenotazione</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Nuova prenotazione</h1>
+        <button
+          type="button"
+          className="ui-btn ui-btn-ghost"
+          onClick={() => router.push('/dashboard')}
+        >
+          ← Torna alla dashboard
+        </button>
+      </div>
 
-      {loadError && <div className="ui-card text-sm text-red-600">{loadError}</div>}
+      {loadError && (
+        <div className="ui-card text-sm text-red-600">{loadError}</div>
+      )}
 
       {loading ? (
         <div className="ui-card">Caricamento…</div>
@@ -324,46 +336,83 @@ export default function BookingsPage() {
 
             <div className="flex flex-wrap gap-6">
               <label className="ui-switch">
-                <input type="radio" checked={kind==='individual'} onChange={()=>setKind('individual')} />
+                <input
+                  type="radio"
+                  checked={kind === 'individual'}
+                  onChange={() => setKind('individual')}
+                />
                 Privato
               </label>
               <label className="ui-switch">
-                <input type="radio" checked={kind==='company'} onChange={()=>setKind('company')} />
+                <input
+                  type="radio"
+                  checked={kind === 'company'}
+                  onChange={() => setKind('company')}
+                />
                 Società / Ditta
               </label>
             </div>
 
-            {kind==='individual' ? (
+            {kind === 'individual' ? (
               <div className="space-y-3">
                 <label className="ui-switch">
-                  <input type="checkbox" checked={!useExistingIndividual}
-                         onChange={e=>setUseExistingIndividual(!e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={!useExistingIndividual}
+                    onChange={e => setUseExistingIndividual(!e.target.checked)}
+                  />
                   Crea nuova anagrafica (privato)
                 </label>
 
                 {useExistingIndividual ? (
                   <div>
                     <label className="ui-label">Seleziona privato esistente</label>
-                    <select className="ui-select" value={individualId} onChange={e=>setIndividualId(e.target.value)}>
+                    <select
+                      className="ui-select"
+                      value={individualId}
+                      onChange={e => setIndividualId(e.target.value)}
+                    >
                       <option value="">— Seleziona —</option>
-                      {customers.filter(c => c.kind==='individual').map(c => (
-                        <option key={c.id} value={c.id}>{c.display_name} {c.phone ? `— ${c.phone}` : ''}</option>
+                      {individuals.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.display_name} {c.phone ? `— ${c.phone}` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
                 ) : (
                   <div className="ui-grid-2">
-                    <div><label className="ui-label">Nome e Cognome *</label>
-                      <input className="ui-input" value={newIndividualName} onChange={e=>setNewIndividualName(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Nome e Cognome *</label>
+                      <input
+                        className="ui-input"
+                        value={newIndividualName}
+                        onChange={e => setNewIndividualName(e.target.value)}
+                      />
                     </div>
-                    <div><label className="ui-label">Telefono</label>
-                      <input className="ui-input" value={newIndividualPhone} onChange={e=>setNewIndividualPhone(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Telefono</label>
+                      <input
+                        className="ui-input"
+                        value={newIndividualPhone}
+                        onChange={e => setNewIndividualPhone(e.target.value)}
+                      />
                     </div>
-                    <div><label className="ui-label">Email</label>
-                      <input className="ui-input" value={newIndividualEmail} onChange={e=>setNewIndividualEmail(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Email</label>
+                      <input
+                        className="ui-input"
+                        value={newIndividualEmail}
+                        onChange={e => setNewIndividualEmail(e.target.value)}
+                      />
                     </div>
-                    <div><label className="ui-label">Note cliente (opz.)</label>
-                      <input className="ui-input" value={newIndividualNotes} onChange={e=>setNewIndividualNotes(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Note cliente (opz.)</label>
+                      <input
+                        className="ui-input"
+                        value={newIndividualNotes}
+                        onChange={e => setNewIndividualNotes(e.target.value)}
+                      />
                     </div>
                   </div>
                 )}
@@ -371,34 +420,63 @@ export default function BookingsPage() {
             ) : (
               <div className="space-y-3">
                 <label className="ui-switch">
-                  <input type="checkbox" checked={!useExistingCompany}
-                         onChange={e=>setUseExistingCompany(!e.target.checked)} />
-                  Crea nuova anagrafica (società)
+                  <input
+                    type="checkbox"
+                    checked={!useExistingCompany}
+                    onChange={e => setUseExistingCompany(!e.target.checked)}
+                  />
+                Crea nuova anagrafica (società)
                 </label>
 
                 {useExistingCompany ? (
                   <div>
                     <label className="ui-label">Seleziona società esistente</label>
-                    <select className="ui-select" value={companyId} onChange={e=>setCompanyId(e.target.value)}>
+                    <select
+                      className="ui-select"
+                      value={companyId}
+                      onChange={e => setCompanyId(e.target.value)}
+                    >
                       <option value="">— Seleziona —</option>
-                      {customers.filter(c => c.kind==='company').map(c => (
-                        <option key={c.id} value={c.id}>{c.display_name} {c.phone ? `— ${c.phone}` : ''}</option>
+                      {companies.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.display_name} {c.phone ? `— ${c.phone}` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
                 ) : (
                   <div className="ui-grid-2">
-                    <div><label className="ui-label">Ragione sociale *</label>
-                      <input className="ui-input" value={newCompanyName} onChange={e=>setNewCompanyName(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Ragione sociale *</label>
+                      <input
+                        className="ui-input"
+                        value={newCompanyName}
+                        onChange={e => setNewCompanyName(e.target.value)}
+                      />
                     </div>
-                    <div><label className="ui-label">Telefono</label>
-                      <input className="ui-input" value={newCompanyPhone} onChange={e=>setNewCompanyPhone(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Telefono</label>
+                      <input
+                        className="ui-input"
+                        value={newCompanyPhone}
+                        onChange={e => setNewCompanyPhone(e.target.value)}
+                      />
                     </div>
-                    <div><label className="ui-label">Email</label>
-                      <input className="ui-input" value={newCompanyEmail} onChange={e=>setNewCompanyEmail(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Email</label>
+                      <input
+                        className="ui-input"
+                        value={newCompanyEmail}
+                        onChange={e => setNewCompanyEmail(e.target.value)}
+                      />
                     </div>
-                    <div><label className="ui-label">Note cliente (opz.)</label>
-                      <input className="ui-input" value={newCompanyNotes} onChange={e=>setNewCompanyNotes(e.target.value)} />
+                    <div>
+                      <label className="ui-label">Note cliente (opz.)</label>
+                      <input
+                        className="ui-input"
+                        value={newCompanyNotes}
+                        onChange={e => setNewCompanyNotes(e.target.value)}
+                      />
                     </div>
                   </div>
                 )}
@@ -408,31 +486,74 @@ export default function BookingsPage() {
 
           {/* Ospite principale */}
           <div className="ui-row ui-grid-2">
-            <div><label className="ui-label">Nome ospite principale *</label>
-              <input className="ui-input" value={guestFirst} onChange={e=>setGuestFirst(e.target.value)} required />
+            <div>
+              <label className="ui-label">Nome ospite principale *</label>
+              <input
+                className="ui-input"
+                value={guestFirst}
+                onChange={e => setGuestFirst(e.target.value)}
+                required
+              />
             </div>
-            <div><label className="ui-label">Cognome ospite principale *</label>
-              <input className="ui-input" value={guestLast} onChange={e=>setGuestLast(e.target.value)} required />
+            <div>
+              <label className="ui-label">Cognome ospite principale *</label>
+              <input
+                className="ui-input"
+                value={guestLast}
+                onChange={e => setGuestLast(e.target.value)}
+                required
+              />
             </div>
-            <div><label className="ui-label">Telefono ospite</label>
-              <input className="ui-input" value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} />
+            <div>
+              <label className="ui-label">Telefono ospite</label>
+              <input
+                className="ui-input"
+                value={guestPhone}
+                onChange={e => setGuestPhone(e.target.value)}
+              />
             </div>
-            <div><label className="ui-label">Email ospite</label>
-              <input className="ui-input" value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} />
+            <div>
+              <label className="ui-label">Email ospite</label>
+              <input
+                className="ui-input"
+                value={guestEmail}
+                onChange={e => setGuestEmail(e.target.value)}
+              />
             </div>
           </div>
 
           {/* Soggiorno */}
           <div className="ui-row ui-grid-3">
-            <div><label className="ui-label">Check-in</label>
-              <input type="date" className="ui-input" value={checkIn} onChange={e=>setCheckIn(e.target.value)} required />
+            <div>
+              <label className="ui-label">Check-in</label>
+              <input
+                type="date"
+                className="ui-input"
+                value={checkIn}
+                onChange={e => setCheckIn(e.target.value)}
+                required
+              />
             </div>
-            <div><label className="ui-label">Check-out</label>
-              <input type="date" className="ui-input" value={checkOut} onChange={e=>setCheckOut(e.target.value)} required />
+            <div>
+              <label className="ui-label">Check-out</label>
+              <input
+                type="date"
+                className="ui-input"
+                value={checkOut}
+                onChange={e => setCheckOut(e.target.value)}
+                required
+              />
             </div>
-            <div><label className="ui-label">Pax predefinita nuove righe</label>
-              <input type="number" min={1} max={4} className="ui-input"
-                     value={defaultPax} onChange={e=>setDefaultPax(Math.min(4, Math.max(1, Number(e.target.value))))} />
+            <div>
+              <label className="ui-label">Pax predefinita nuove righe</label>
+              <input
+                type="number"
+                min={1}
+                max={4}
+                className="ui-input"
+                value={defaultPax}
+                onChange={e => setDefaultPax(Math.min(4, Math.max(1, Number(e.target.value))))}
+              />
               <div className="ui-hint">Usata come default quando aggiungi una camera</div>
             </div>
           </div>
@@ -442,7 +563,11 @@ export default function BookingsPage() {
             <div className="ui-row-head">
               <div className="ui-section-title">Camere</div>
               {!showAllRooms && (
-                <button type="button" className="ui-btn ui-btn-ghost" onClick={()=>setShowAllRooms(true)}>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-ghost"
+                  onClick={() => setShowAllRooms(true)}
+                >
                   Mostra tutte
                 </button>
               )}
@@ -457,45 +582,73 @@ export default function BookingsPage() {
                   <div className="ui-grid-4">
                     <div>
                       <label className="ui-label">Camera</label>
-                      <select className="ui-select" value={it.roomId}
-                              onChange={e=>updateItem(idx,{roomId:e.target.value})} required>
+                      <select
+                        className="ui-select"
+                        value={it.roomId}
+                        onChange={e => updateItem(idx, { roomId: e.target.value })}
+                        required
+                      >
                         <option value="">— Seleziona —</option>
-                        {opts.map(r => <option key={r.id} value={r.id}>Camera {r.name}</option>)}
+                        {opts.map(r => (
+                          <option key={r.id} value={r.id}>
+                            Camera {r.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
                     <div>
                       <label className="ui-label">Pax per camera</label>
-                      <input type="number" min={1} max={4} className="ui-input"
-                             value={it.pax}
-                             onChange={e=>{
-                               const p = Math.min(4, Math.max(1, Number(e.target.value)));
-                               updateItem(idx,{ pax: p });
-                             }} />
+                      <input
+                        type="number"
+                        min={1}
+                        max={4}
+                        className="ui-input"
+                        value={it.pax}
+                        onChange={e => {
+                          const p = Math.min(4, Math.max(1, Number(e.target.value)));
+                          updateItem(idx, { pax: p });
+                        }}
+                      />
                     </div>
 
                     <div>
                       <label className="ui-label">Convenzione</label>
-                      <select className="ui-select"
-                              value={it.conventionId ?? ''}
-                              onChange={e=>updateItem(idx,{conventionId: e.target.value || null})}>
-                        <option value="">Listino standard ({RATE_LABEL[it.rateTypeRow]})</option>
+                      <select
+                        className="ui-select"
+                        value={it.conventionId ?? ''}
+                        onChange={e => updateItem(idx, { conventionId: e.target.value || null })}
+                      >
+                        <option value="">
+                          Listino standard ({RATE_LABEL[it.rateTypeRow]})
+                        </option>
                         {convOpts.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} — €{Number(c.price).toFixed(2)}</option>
+                          <option key={c.id} value={c.id}>
+                            {c.name} — €{Number(c.price).toFixed(2)}
+                          </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
                       <label className="ui-label">Prezzo riga (€)</label>
-                      <input type="number" step="0.01" min={0} className="ui-input"
-                             value={it.price} onChange={e=>updateItem(idx,{price:Number(e.target.value)})} />
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        className="ui-input"
+                        value={it.price}
+                        onChange={e => updateItem(idx, { price: Number(e.target.value) })}
+                      />
                     </div>
                   </div>
 
                   <label className="ui-switch">
-                    <input type="checkbox" checked={it.useMainGuest}
-                           onChange={e=>updateItem(idx,{useMainGuest:e.target.checked})} />
+                    <input
+                      type="checkbox"
+                      checked={it.useMainGuest}
+                      onChange={e => updateItem(idx, { useMainGuest: e.target.checked })}
+                    />
                     Usa la stessa anagrafica ospite per questa camera
                   </label>
 
@@ -503,18 +656,30 @@ export default function BookingsPage() {
                     <div className="ui-grid-2">
                       <div>
                         <label className="ui-label">Nome ospite camera *</label>
-                        <input className="ui-input" value={it.guestFirst || ''} onChange={e=>updateItem(idx,{guestFirst:e.target.value})} />
+                        <input
+                          className="ui-input"
+                          value={it.guestFirst || ''}
+                          onChange={e => updateItem(idx, { guestFirst: e.target.value })}
+                        />
                       </div>
                       <div>
                         <label className="ui-label">Cognome ospite camera *</label>
-                        <input className="ui-input" value={it.guestLast || ''} onChange={e=>updateItem(idx,{guestLast:e.target.value})} />
+                        <input
+                          className="ui-input"
+                          value={it.guestLast || ''}
+                          onChange={e => updateItem(idx, { guestLast: e.target.value })}
+                        />
                       </div>
                     </div>
                   )}
 
                   <div className="flex justify-end">
-                    <button type="button" className="ui-btn ui-btn-danger"
-                            onClick={()=>removeItem(idx)} disabled={items.length===1}>
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-danger"
+                      onClick={() => removeItem(idx)}
+                      disabled={items.length === 1}
+                    >
                       Rimuovi riga
                     </button>
                   </div>
@@ -530,7 +695,9 @@ export default function BookingsPage() {
           </div>
 
           <div className="flex justify-between items-center">
-            <div className="ui-hint">Il prezzo riga segue pax e convenzione, ma può essere modificato manualmente.</div>
+            <div className="ui-hint">
+              Il prezzo riga segue pax e convenzione, ma può essere modificato manualmente.
+            </div>
             <button className="ui-btn ui-btn-primary">Salva prenotazione</button>
           </div>
         </form>

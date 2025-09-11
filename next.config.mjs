@@ -1,5 +1,4 @@
-// next.config.mjs (ESM)
-import path from "node:path";
+﻿import path from "node:path";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
