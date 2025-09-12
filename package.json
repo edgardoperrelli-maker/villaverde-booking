@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "cross-env NEXT_DISABLE_TURBOPACK=1 next dev",
-  "build": "next build",
-  "start": "next start"
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
@@ -27,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
     "postcss": "^8.4.0",
+    "supabase": "^2.40.7",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
