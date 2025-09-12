@@ -1,13 +1,15 @@
 // src/app/api/booking/export/route.ts
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/supabaseAdmin";
 import type { Database } from "@/types/supabase";
 
 type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
-// Riga tipizzata del select con embed della relazione rooms(name).
-// Se il nome del vincolo è diverso da "bookings_room_id_fkey",
-// sostituiscilo anche nel select più sotto.
+// Riga del select con embed rooms(name)
+// Se il nome del vincolo FK è diverso, sostituisci "bookings_room_id_fkey" nel select.
 type BookingWithRoomName = Pick<
   BookingRow,
   | "id"
@@ -31,24 +33,41 @@ function toISO(d: Date): string {
   return d.toISOString();
 }
 
+// Converte 'YYYY-MM-DD...' in 'DD/MM/YYYY' senza problemi di timezone
+function toDMY(input: string): string {
+  const ymd = String(input).slice(0, 10); // "YYYY-MM-DD"
+  const [y, m, d] = ymd.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 type CsvRow = {
   id: BookingRow["id"];
-  room: string; // nome camera, fallback a room_id
-  guest: string;
-  check_in: string;  // YYYY-MM-DD
-  check_out: string; // YYYY-MM-DD
+  camera: string;        // nome camera o fallback a room_id
+  ospite: string;
+  check_in: string;      // DD/MM/YYYY
+  check_out: string;     // DD/MM/YYYY
   pax: BookingRow["pax"];
-  price: BookingRow["price"];
-  breakfast_done: "yes" | "no";
-  payment_status: BookingRow["payment_status"];
+  prezzo: string;        // 2 decimali, stringa per compat Excel
+  colazione: "sì" | "no";
+  stato_pagamento: "pagato" | "da pagare" | "n.d.";
 };
 
-function toCSV<T extends Record<string, unknown>>(rows: T[]): string {
+function toCSV(rows: CsvRow[]): string {
   if (!rows.length) return "";
-  const headers = Object.keys(rows[0]) as (keyof T)[];
+  const headers: (keyof CsvRow)[] = [
+    "id",
+    "camera",
+    "ospite",
+    "check_in",
+    "check_out",
+    "pax",
+    "prezzo",
+    "colazione",
+    "stato_pagamento",
+  ];
   const esc = (v: unknown) => `"${String(v ?? "").replaceAll('"', '""')}"`;
   const lines = [
-    headers.join(","),
+    headers.join(","), // intestazioni in italiano
     ...rows.map((r) => headers.map((h) => esc(r[h])).join(",")),
   ];
   return lines.join("\n");
@@ -63,8 +82,6 @@ export async function GET(req: Request) {
   const today = startOfDay();
   const startIso = toISO(today);
 
-  // Usa l'embed esplicito della relazione rooms tramite il nome del vincolo FK.
-  // Se il tuo vincolo si chiama diversamente, sostituisci "bookings_room_id_fkey".
   let q = supabaseAdmin
     .from("bookings")
     .select(
@@ -92,21 +109,31 @@ export async function GET(req: Request) {
 
   const rows: CsvRow[] = ((data ?? []) as BookingWithRoomName[]).map((b) => ({
     id: b.id,
-    room: b.rooms?.name ?? String(b.room_id),
-    guest: `${b.guest_firstname} ${b.guest_lastname}`,
-    check_in: new Date(b.check_in).toISOString().slice(0, 10),
-    check_out: new Date(b.check_out).toISOString().slice(0, 10),
+    camera: b.rooms?.name ?? String(b.room_id),
+    ospite: `${b.guest_firstname} ${b.guest_lastname}`,
+    check_in: toDMY(b.check_in),
+    check_out: toDMY(b.check_out),
     pax: b.pax,
-    price: b.price,
-    breakfast_done: b.breakfast_done ? "yes" : "no",
-    payment_status: b.payment_status,
+    prezzo: typeof b.price === "number" ? b.price.toFixed(2) : "",
+    colazione: b.breakfast_done ? "sì" : "no",
+    stato_pagamento:
+      b.payment_status === "PAID"
+        ? "pagato"
+        : b.payment_status === "DUE"
+        ? "da pagare"
+        : "n.d.",
   }));
 
   const csv = toCSV(rows);
-  return new NextResponse(csv, {
+
+  // Prepend BOM per compatibilità Excel e corretta visualizzazione di "sì"
+  const body = "\uFEFF" + csv;
+
+  return new NextResponse(body, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="bookings_${scope}.csv"`
-    }
+      "Content-Disposition": `attachment; filename="prenotazioni_${scope}.csv"`,
+      "Cache-Control": "no-store",
+    },
   });
 }
