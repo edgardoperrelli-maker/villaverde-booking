@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../../lib/supabaseClient'; // usa '@/lib/supabaseClient' se hai l'alias
+import { supabase } from '@/lib/supabaseClient'; // usa '@/lib/supabaseClient' se hai l'alias
 
 type RateType = 'Singola' | 'Doppia' | 'Tripla' | 'Quadrupla';
 
