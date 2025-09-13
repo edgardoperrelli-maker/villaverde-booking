@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import SearchBookingButton from './SearchBookingButton';
+import SearchBookingButton from "./_parts/SearchBookingButton";
 
 type PaymentStatus = 'DUE' | 'PAID' | 'NA';
 
