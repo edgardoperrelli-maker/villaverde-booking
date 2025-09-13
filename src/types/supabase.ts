@@ -22,6 +22,7 @@ export type Database = {
           check_out: string
           created_at: string | null
           customer_id: string | null
+          deleted_at: string | null
           guest_email: string | null
           guest_firstname: string
           guest_lastname: string
@@ -43,6 +44,7 @@ export type Database = {
           check_out: string
           created_at?: string | null
           customer_id?: string | null
+          deleted_at?: string | null
           guest_email?: string | null
           guest_firstname: string
           guest_lastname: string
@@ -64,6 +66,7 @@ export type Database = {
           check_out?: string
           created_at?: string | null
           customer_id?: string | null
+          deleted_at?: string | null
           guest_email?: string | null
           guest_firstname?: string
           guest_lastname?: string

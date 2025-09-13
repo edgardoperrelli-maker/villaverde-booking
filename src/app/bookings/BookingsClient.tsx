@@ -71,7 +71,7 @@ type Item = {
 export default function BookingsPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const editId = search.get('id');                    // <-- se presente, siamo in MODIFICA
+  const editId = search.get('id');          // <-- se presente, siamo in MODIFICA
   const isEdit = Boolean(editId);
 
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -80,6 +80,9 @@ export default function BookingsPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [kind, setKind] = useState<'company' | 'individual'>('individual');
 
@@ -98,12 +101,12 @@ export default function BookingsPage() {
   const [newIndividualNotes, setNewIndividualNotes] = useState('');
 
   const [guestFirst, setGuestFirst] = useState('');
-  const [guestLast,  setGuestLast]  = useState('');
+  const [guestLast,  setGuestLast ] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
 
-  const [checkIn, setCheckIn]   = useState('');   // YYYY-MM-DD
-  const [checkOut, setCheckOut] = useState('');   // YYYY-MM-DD
+  const [checkIn, setCheckIn]     = useState(''); // YYYY-MM-DD
+  const [checkOut, setCheckOut]   = useState('');
   const [defaultPax, setDefaultPax] = useState(1);
 
   const [items, setItems] = useState<Item[]>([
@@ -238,7 +241,7 @@ export default function BookingsPage() {
       // Precompila campi principali
       setGuestFirst(data.guest_firstname ?? '');
       setGuestLast(data.guest_lastname ?? '');
-      setCheckIn(String(data.check_in).slice(0, 10));   // YYYY-MM-DD per <input type="date">
+      setCheckIn(String(data.check_in).slice(0, 10));
       setCheckOut(String(data.check_out).slice(0, 10));
       setDefaultPax(Number(data.pax ?? 1));
 
@@ -293,81 +296,111 @@ export default function BookingsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
 
-    if (!guestFirst.trim() || !guestLast.trim()) { alert('Inserisci nome e cognome dell’ospite principale.'); return; }
-    if (!guestPhone.trim() && !guestEmail.trim()) { alert('Telefono o email dell’ospite principale obbligatorio.'); return; }
-    if (!checkIn || !checkOut) { alert('Inserisci check-in e check-out.'); return; }
-    if (items.some(it => !it.roomId || it.pax < 1 || it.pax > 4)) { alert('Seleziona camera e pax (1–4) su ogni riga.'); return; }
+    try {
+      if (!guestFirst.trim() || !guestLast.trim()) { alert('Inserisci nome e cognome dell’ospite principale.'); return; }
+      if (!guestPhone.trim() && !guestEmail.trim()) { alert('Telefono o email dell’ospite principale obbligatorio.'); return; }
+      if (!checkIn || !checkOut) { alert('Inserisci check-in e check-out.'); return; }
+      if (items.some(it => !it.roomId || it.pax < 1 || it.pax > 4)) { alert('Seleziona camera e pax (1–4) su ogni riga.'); return; }
 
-    // --- MODIFICA: aggiorna una singola prenotazione (quella indicata da ?id) ---
-    if (isEdit && editId) {
-      const row = items[0];
-      if (!row) { alert('Dati riga non validi.'); return; }
+      // --- MODIFICA: aggiorna una singola prenotazione (quella indicata da ?id) ---
+      if (isEdit && editId) {
+        const row = items[0];
+        if (!row) { alert('Dati riga non validi.'); return; }
 
-      const fd = new FormData();
-      fd.set('guest_firstname', guestFirst.trim());
-      fd.set('guest_lastname',  guestLast.trim());
-      fd.set('check_in',  checkIn);
-      fd.set('check_out', checkOut);
-      fd.set('pax',   String(row.pax));
-      fd.set('price', String(row.price));
+        const fd = new FormData();
+        fd.set('guest_firstname', guestFirst.trim());
+        fd.set('guest_lastname',  guestLast.trim());
+        fd.set('check_in',  checkIn);
+        fd.set('check_out', checkOut);
+        fd.set('pax',   String(row.pax));
+        fd.set('price', String(row.price));
 
-      const res = await fetch(`/api/booking/${editId}`, { method: 'PATCH', body: fd });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        alert(`Errore salvataggio: ${j.error ?? res.statusText}`);
+        const res = await fetch(`/api/booking/${editId}`, { method: 'PATCH', body: fd });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          alert(`Errore salvataggio: ${j.error ?? res.statusText}`);
+          return;
+        }
+        alert('Prenotazione aggiornata.');
+        router.push('/dashboard');
         return;
       }
-      alert('Prenotazione aggiornata.');
+
+      // --- CREAZIONE: inserisce N righe (una per camera) ---
+      const customer_id = await resolveCustomerId();
+      if (!customer_id) return;
+
+      // group id
+      let groupId: string | undefined;
+      try {
+        const { data, error } = await supabase.rpc('uuid_generate_v4');
+        if (!error && data) groupId = data as unknown as string;
+      } catch {}
+      if (!groupId) {
+        groupId = (globalThis.crypto?.randomUUID?.() as string) || undefined;
+      }
+
+      const payloads = items.map(it => {
+        const first = it.useMainGuest ? guestFirst.trim() : (it.guestFirst || '').trim();
+        const last  = it.useMainGuest ? guestLast.trim()  : (it.guestLast  || '').trim();
+        if (!first || !last) throw new Error('Nome/Cognome mancanti su una riga camera con ospite diverso.');
+        return {
+          room_id: it.roomId,
+          customer_id,
+          kind,
+          guest_firstname: first,
+          guest_lastname:  last,
+          guest_phone: guestPhone.trim() || null,
+          guest_email: guestEmail.trim() || null,
+          check_in: checkIn,
+          check_out: checkOut,
+          pax: it.pax,
+          rate_type: it.rateTypeRow,
+          price: it.price,
+          rooms_count: 1,
+          notes: null as string | null,
+          booking_group_id: groupId,
+        };
+      });
+
+      const { error } = await supabase.from('bookings').insert(payloads);
+      if (error) {
+        alert('Errore salvataggio: ' + error.message);
+        return;
+      }
+
+      alert('Prenotazione salvata.');
       router.push('/dashboard');
-      return;
+    } finally {
+      setSaving(false);
     }
+  }
 
-    // --- CREAZIONE: come prima, inserisce N righe (una per camera) ---
-    const customer_id = await resolveCustomerId();
-    if (!customer_id) return;
+  // ------------------ Cancellazione (SOFT DELETE con doppia conferma) ------------------
+  async function handleDelete() {
+    if (!isEdit || !editId || deleting) return;
 
-    // group id
-    let groupId: string | undefined;
+    const first = window.confirm('Attenzione: vuoi davvero cancellare questa prenotazione?');
+    if (!first) return;
+    const second = window.confirm('Confermi la cancellazione? La prenotazione sarà spostata nel Cestino per 30 giorni.');
+    if (!second) return;
+
+    setDeleting(true);
     try {
-      const { data, error } = await supabase.rpc('uuid_generate_v4');
-      if (!error && data) groupId = data as unknown as string;
-    } catch {}
-    if (!groupId) {
-      groupId = (globalThis.crypto?.randomUUID?.() as string) || undefined;
+      const res = await fetch(`/api/booking/${editId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(`Errore cancellazione: ${j.error ?? res.statusText}`);
+        return;
+      }
+      alert('Prenotazione cancellata. È stata spostata nel Cestino (auto-svuotamento dopo 30 giorni).');
+      router.push('/dashboard');
+    } finally {
+      setDeleting(false);
     }
-
-    const payloads = items.map(it => {
-      const first = it.useMainGuest ? guestFirst.trim() : (it.guestFirst || '').trim();
-      const last  = it.useMainGuest ? guestLast.trim()  : (it.guestLast  || '').trim();
-      if (!first || !last) throw new Error('Nome/Cognome mancanti su una riga camera con ospite diverso.');
-      return {
-        room_id: it.roomId,
-        customer_id,
-        kind,
-        guest_firstname: first,
-        guest_lastname:  last,
-        guest_phone: guestPhone.trim() || null,
-        guest_email: guestEmail.trim() || null,
-        check_in: checkIn,
-        check_out: checkOut,
-        pax: it.pax,
-        rate_type: it.rateTypeRow,
-        price: it.price,
-        rooms_count: 1,
-        notes: null as string | null,
-        booking_group_id: groupId,
-      };
-    });
-
-    const { error } = await supabase.from('bookings').insert(payloads);
-    if (error) {
-      alert('Errore salvataggio: ' + error.message);
-      return;
-    }
-
-    alert('Prenotazione salvata.');
-    router.push('/dashboard');
   }
 
   // ------------------ UI ------------------
@@ -377,13 +410,28 @@ export default function BookingsPage() {
         <h1 className="text-2xl font-bold tracking-tight">
           {isEdit ? `Modifica prenotazione #${editId}` : 'Nuova prenotazione'}
         </h1>
-        <button
-          type="button"
-          className="ui-btn ui-btn-ghost"
-          onClick={() => router.push('/dashboard')}
-        >
-          ← Torna alla dashboard
-        </button>
+
+        <div className="flex items-center gap-2">
+          {isEdit && (
+            <button
+              type="button"
+              className="ui-btn ui-btn-danger"
+              onClick={handleDelete}
+              disabled={deleting || saving}
+              title="Elimina prenotazione (soft delete)"
+            >
+              {deleting ? 'Eliminazione…' : 'Elimina prenotazione'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="ui-btn ui-btn-ghost"
+            onClick={() => router.push('/dashboard')}
+            disabled={deleting}
+          >
+            ← Torna alla dashboard
+          </button>
+        </div>
       </div>
 
       {loadError && (
@@ -394,7 +442,7 @@ export default function BookingsPage() {
         <div className="ui-card">Caricamento…</div>
       ) : (
         <form onSubmit={handleSubmit} className="ui-card space-y-6">
-          {/* Cliente */}
+          {/* Cliente (solo in creazione) */}
           {!isEdit && (
             <div className="ui-row space-y-4">
               <div className="ui-section-title">Cliente</div>
@@ -559,6 +607,7 @@ export default function BookingsPage() {
                 value={guestFirst}
                 onChange={e => setGuestFirst(e.target.value)}
                 required
+                disabled={deleting}
               />
             </div>
             <div>
@@ -568,6 +617,7 @@ export default function BookingsPage() {
                 value={guestLast}
                 onChange={e => setGuestLast(e.target.value)}
                 required
+                disabled={deleting}
               />
             </div>
             <div>
@@ -576,6 +626,7 @@ export default function BookingsPage() {
                 className="ui-input"
                 value={guestPhone}
                 onChange={e => setGuestPhone(e.target.value)}
+                disabled={deleting}
               />
             </div>
             <div>
@@ -584,6 +635,7 @@ export default function BookingsPage() {
                 className="ui-input"
                 value={guestEmail}
                 onChange={e => setGuestEmail(e.target.value)}
+                disabled={deleting}
               />
             </div>
           </div>
@@ -598,6 +650,7 @@ export default function BookingsPage() {
                 value={checkIn}
                 onChange={e => setCheckIn(e.target.value)}
                 required
+                disabled={deleting}
               />
             </div>
             <div>
@@ -608,6 +661,7 @@ export default function BookingsPage() {
                 value={checkOut}
                 onChange={e => setCheckOut(e.target.value)}
                 required
+                disabled={deleting}
               />
             </div>
             <div>
@@ -619,6 +673,7 @@ export default function BookingsPage() {
                 className="ui-input"
                 value={defaultPax}
                 onChange={e => setDefaultPax(Math.min(4, Math.max(1, Number(e.target.value))))}
+                disabled={deleting}
               />
               <div className="ui-hint">Usata come default quando aggiungi una camera</div>
             </div>
@@ -628,11 +683,12 @@ export default function BookingsPage() {
           <div className="ui-row space-y-3">
             <div className="ui-row-head">
               <div className="ui-section-title">Camere</div>
-              {!showAllRooms && (
+              {!showAllRooms && !isEdit && (
                 <button
                   type="button"
                   className="ui-btn ui-btn-ghost"
                   onClick={() => setShowAllRooms(true)}
+                  disabled={deleting}
                 >
                   Mostra tutte
                 </button>
@@ -653,6 +709,7 @@ export default function BookingsPage() {
                         value={it.roomId}
                         onChange={e => updateItem(idx, { roomId: e.target.value })}
                         required
+                        disabled={deleting}
                       >
                         <option value="">— Seleziona —</option>
                         {opts.map(r => (
@@ -675,6 +732,7 @@ export default function BookingsPage() {
                           const p = Math.min(4, Math.max(1, Number(e.target.value)));
                           updateItem(idx, { pax: p });
                         }}
+                        disabled={deleting}
                       />
                     </div>
 
@@ -684,7 +742,7 @@ export default function BookingsPage() {
                         className="ui-select"
                         value={it.conventionId ?? ''}
                         onChange={e => updateItem(idx, { conventionId: e.target.value || null })}
-                        disabled={isEdit} // in modifica manteniamo il prezzo caricato
+                        disabled={isEdit || deleting} // in modifica manteniamo il prezzo caricato
                       >
                         <option value="">
                           Listino standard ({RATE_LABEL[it.rateTypeRow]})
@@ -706,57 +764,35 @@ export default function BookingsPage() {
                         className="ui-input"
                         value={it.price}
                         onChange={e => updateItem(idx, { price: Number(e.target.value) })}
+                        disabled={deleting}
                       />
                     </div>
                   </div>
 
-                  <label className="ui-switch">
-                    <input
-                      type="checkbox"
-                      checked={it.useMainGuest}
-                      onChange={e => updateItem(idx, { useMainGuest: e.target.checked })}
-                    />
-                    Usa la stessa anagrafica ospite per questa camera
-                  </label>
-
-                  {!it.useMainGuest && (
-                    <div className="ui-grid-2">
-                      <div>
-                        <label className="ui-label">Nome ospite camera *</label>
-                        <input
-                          className="ui-input"
-                          value={it.guestFirst || ''}
-                          onChange={e => updateItem(idx, { guestFirst: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="ui-label">Cognome ospite camera *</label>
-                        <input
-                          className="ui-input"
-                          value={it.guestLast || ''}
-                          onChange={e => updateItem(idx, { guestLast: e.target.value })}
-                        />
-                      </div>
+                  {!isEdit && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn-danger"
+                        onClick={() => removeItem(idx)}
+                        disabled={items.length === 1 || deleting}
+                      >
+                        Rimuovi riga
+                      </button>
                     </div>
                   )}
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="ui-btn ui-btn-danger"
-                      onClick={() => removeItem(idx)}
-                      disabled={items.length === 1}
-                    >
-                      Rimuovi riga
-                    </button>
-                  </div>
                 </div>
               );
             })}
 
             {!isEdit && (
               <div className="flex justify-end">
-                <button type="button" className="ui-btn ui-btn-ghost" onClick={addItem}>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-ghost"
+                  onClick={addItem}
+                  disabled={deleting}
+                >
                   + Aggiungi camera
                 </button>
               </div>
@@ -767,8 +803,8 @@ export default function BookingsPage() {
             <div className="ui-hint">
               Il prezzo riga segue pax e convenzione, ma può essere modificato manualmente.
             </div>
-            <button className="ui-btn ui-btn-primary">
-              {isEdit ? 'Salva modifiche' : 'Salva prenotazione'}
+            <button className="ui-btn ui-btn-primary" disabled={saving || deleting}>
+              {saving ? 'Salvataggio…' : isEdit ? 'Salva modifiche' : 'Salva prenotazione'}
             </button>
           </div>
         </form>

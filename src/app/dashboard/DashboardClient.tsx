@@ -1,29 +1,14 @@
+// src/app/dashboard/DashboardClient.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import SearchBookingButton from "./_parts/SearchBookingButton";
-
-// ----------------------------- Tipi ------------------------------------
+import SearchBookingButton from './SearchBookingButton';
 
 type PaymentStatus = 'DUE' | 'PAID' | 'NA';
 
 type BookingRow = {
-  id: string;
-  room_id: string | number;
-  check_in: string;   // YYYY-MM-DD o ISO
-  check_out: string;  // YYYY-MM-DD o ISO
-  pax: number;
-  price: number | null;
-  guest_firstname: string;
-  guest_lastname: string;
-  breakfast_done?: boolean | null;
-  payment_status?: PaymentStatus | null;
-  rooms: { name: string } | null;
-};
-
-type DbBookingRow = {
   id: string;
   room_id: string | number;
   check_in: string;
@@ -34,13 +19,17 @@ type DbBookingRow = {
   guest_lastname: string;
   breakfast_done?: boolean | null;
   payment_status?: PaymentStatus | null;
+  rooms: { name: string } | null;
+};
+
+type DbBookingRow = Omit<BookingRow, 'rooms'> & {
   rooms?: { name: string } | { name: string }[] | null;
 };
 
 function normalizeBookingRow(r: DbBookingRow): BookingRow {
   const roomObj = Array.isArray(r.rooms) ? (r.rooms[0] ?? null) : (r.rooms ?? null);
   return {
-    id: r.id,
+    id: String(r.id),
     room_id: r.room_id,
     check_in: r.check_in,
     check_out: r.check_out,
@@ -54,24 +43,19 @@ function normalizeBookingRow(r: DbBookingRow): BookingRow {
   };
 }
 
-// --------------------------- Helpers -----------------------------------
-
 function fmtDate(input: string): string {
-  const ymd = String(input).slice(0, 10); // YYYY-MM-DD
+  const ymd = String(input).slice(0, 10);
   const [y, m, d] = ymd.split('-');
   return `${d}/${m}/${y}`;
 }
-
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return new Date().toISOString().slice(0, 10);
 }
 function addDaysISO(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 }
-
-// --------------------------- Component ---------------------------------
 
 export default function DashboardClient() {
   const router = useRouter();
@@ -83,14 +67,13 @@ export default function DashboardClient() {
   const [arrivals, setArrivals] = useState<BookingRow[]>([]);
   const [departures, setDepartures] = useState<BookingRow[]>([]);
   const [recent, setRecent] = useState<BookingRow[]>([]);
-
   const [inHouseToday, setInHouseToday] = useState<BookingRow[]>([]);
   const [inHouseTomorrow, setInHouseTomorrow] = useState<BookingRow[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // Auth guard
+  // Auth
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
@@ -101,72 +84,78 @@ export default function DashboardClient() {
     });
   }, [router]);
 
-  // Caricamento dati cruscotto
+  // Load dashboard
   useEffect(() => {
     (async () => {
       setLoading(true);
       setErr(null);
       const tdy = todayISO();
 
-      // 1) Camere totali
+      // Camere totali
       const roomsQ = await supabase.from('rooms').select('id', { count: 'exact', head: true });
       if (roomsQ.error) setErr(prev => prev ? prev + ` | rooms: ${roomsQ.error!.message}` : `rooms: ${roomsQ.error!.message}`);
       setRoomsCount(roomsQ.count ?? 0);
 
-      // 2) Prenotazioni attive oggi (check_in <= today < check_out)
+      // Prenotazioni attive oggi
       const activeQ = await supabase
         .from('bookings')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .lte('check_in', tdy)
         .gt('check_out', tdy);
       if (activeQ.error) setErr(prev => prev ? prev + ` | active: ${activeQ.error!.message}` : `active: ${activeQ.error!.message}`);
       setActiveTodayCount(activeQ.count ?? 0);
 
-      // 2b) Presenti OGGI
+      // Presenti oggi
       const inhouseTodayQ = await supabase
         .from('bookings')
         .select('id, room_id, check_in, check_out, pax, price, guest_firstname, guest_lastname, breakfast_done, rooms(name)')
+        .is('deleted_at', null)
         .lte('check_in', tdy)
         .gt('check_out', tdy)
         .order('room_id', { ascending: true });
       if (inhouseTodayQ.error) setErr(prev => prev ? prev + ` | inhouse(today): ${inhouseTodayQ.error!.message}` : `inhouse(today): ${inhouseTodayQ.error!.message}`);
       setInHouseToday(((inhouseTodayQ.data as DbBookingRow[]) || []).map(normalizeBookingRow));
 
-      // 2c) Presenti DOMANI
+      // Presenti domani
       const tmr = addDaysISO(1);
       const inhouseTomorrowQ = await supabase
         .from('bookings')
         .select('id, room_id, check_in, check_out, pax, price, guest_firstname, guest_lastname, rooms(name)')
+        .is('deleted_at', null)
         .lte('check_in', tmr)
         .gt('check_out', tmr)
         .order('room_id', { ascending: true });
-      if (inhouseTomorrowQ.error) setErr(prev => prev ? prev + ` | inhouse(tomorrow): ${inhouseTomorrowQ.error!.message}` : `inhouse(tomorrow): ${inhouseTomorrowQ.error!.message}`);
+      if (inhouseTomorrowQ.error) setErr(prev => prev ? prev + ` | inhouse(tmr): ${inhouseTomorrowQ.error!.message}` : `inhouse(tmr): ${inhouseTomorrowQ.error!.message}`);
       setInHouseTomorrow(((inhouseTomorrowQ.data as DbBookingRow[]) || []).map(normalizeBookingRow));
 
-      // 3) Arrivi oggi
+      // Arrivi oggi
       const arrivalsQ = await supabase
         .from('bookings')
         .select('id, room_id, check_in, check_out, pax, price, guest_firstname, guest_lastname, rooms(name)')
+        .is('deleted_at', null)
         .eq('check_in', tdy)
         .order('check_in', { ascending: true })
         .limit(10);
       if (arrivalsQ.error) setErr(prev => prev ? prev + ` | arrivals: ${arrivalsQ.error!.message}` : `arrivals: ${arrivalsQ.error!.message}`);
       setArrivals(((arrivalsQ.data as DbBookingRow[]) || []).map(normalizeBookingRow));
 
-      // 4) Partenze oggi (con payment_status e price)
+      // Partenze oggi
       const departuresQ = await supabase
         .from('bookings')
         .select('id, room_id, check_in, check_out, pax, price, guest_firstname, guest_lastname, payment_status, rooms(name)')
+        .is('deleted_at', null)
         .eq('check_out', tdy)
         .order('check_out', { ascending: true })
         .limit(10);
       if (departuresQ.error) setErr(prev => prev ? prev + ` | departures: ${departuresQ.error!.message}` : `departures: ${departuresQ.error!.message}`);
       setDepartures(((departuresQ.data as DbBookingRow[]) || []).map(normalizeBookingRow));
 
-      // 5) Ultime prenotazioni
+      // Ultime prenotazioni
       const recentQ = await supabase
         .from('bookings')
         .select('id, room_id, check_in, check_out, pax, price, guest_firstname, guest_lastname, rooms(name)')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(8);
       if (recentQ.error) setErr(prev => prev ? prev + ` | recent: ${recentQ.error!.message}` : `recent: ${recentQ.error!.message}`);
@@ -176,8 +165,7 @@ export default function DashboardClient() {
     })();
   }, []);
 
-  // --------------------------- Actions ---------------------------------
-
+  // Actions
   async function toggleBreakfast(bookingId: string, v: boolean) {
     setInHouseToday(prev => prev.map(b => b.id === bookingId ? { ...b, breakfast_done: v } : b));
     await fetch(`/api/booking/${bookingId}/flags`, {
@@ -196,14 +184,29 @@ export default function DashboardClient() {
     });
   }
 
+  async function handleDelete(bookingId: string) {
+    if (!confirm("Confermi la cancellazione della prenotazione?")) return;
+    if (!confirm("Ultima conferma: la prenotazione andrà nel Cestino per 30 giorni.")) return;
+
+    const res = await fetch(`/api/booking/${bookingId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert("Errore cancellazione: " + (j.error ?? res.statusText));
+      return;
+    }
+    setArrivals(prev => prev.filter(b => b.id !== bookingId));
+    setInHouseToday(prev => prev.filter(b => b.id !== bookingId));
+    setInHouseTomorrow(prev => prev.filter(b => b.id !== bookingId));
+    setDepartures(prev => prev.filter(b => b.id !== bookingId));
+    setRecent(prev => prev.filter(b => b.id !== bookingId));
+  }
+
   const logout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
   };
 
   const availableRooms = Math.max(0, roomsCount - activeTodayCount);
-
-  // ---------------------------- Render ---------------------------------
 
   return (
     <main className="ui-container space-y-6">
@@ -219,9 +222,8 @@ export default function DashboardClient() {
       <div className="ui-card flex flex-wrap gap-3">
         <a href="/bookings" className="ui-btn ui-btn-primary">+ Nuova prenotazione</a>
         <a href="/rooms" className="ui-btn ui-btn-ghost">Gestione camere</a>
-
-        {/* ⬇️ Richiesti: Calendario (anno) + Export immediatamente a destra */}
         <a href="/calendar" className="ui-btn ui-btn-ghost">Calendario (anno)</a>
+
         <div className="relative">
           <details>
             <summary className="ui-btn ui-btn-ghost cursor-pointer">Export</summary>
@@ -232,11 +234,8 @@ export default function DashboardClient() {
             </div>
           </details>
         </div>
-        {/* fine inserimento */}
 
-        <a href="#" className="ui-btn ui-btn-ghost opacity-60 pointer-events-none">Clienti (presto)</a>
-        <a href="#" className="ui-btn ui-btn-ghost opacity-60 pointer-events-none">Listino (presto)</a>
-        <a href="#" className="ui-btn ui-btn-ghost opacity-60 pointer-events-none">Convenzioni (presto)</a>
+        <a href="/trash" className="ui-btn ui-btn-ghost">Cestino</a>
       </div>
 
       {err && <div className="ui-card text-sm text-rose-700">{err}</div>}
@@ -250,23 +249,20 @@ export default function DashboardClient() {
             <div className="ui-card">
               <div className="text-sm text-slate-500">Camere disponibili</div>
               <div className="text-3xl font-semibold mt-1">{availableRooms}</div>
-              <div className="ui-hint mt-2">
-                Totali: {roomsCount} • Attive oggi: {activeTodayCount}
-              </div>
+              <div className="ui-hint mt-2">Totali: {roomsCount} • Attive oggi: {activeTodayCount}</div>
             </div>
             <div className="ui-card">
               <div className="text-sm text-slate-500">Prenotazioni attive oggi</div>
               <div className="text-3xl font-semibold mt-1">{activeTodayCount}</div>
               <div className="ui-hint mt-2">check-in ≤ oggi &lt; check-out</div>
             </div>
-            {/* Al posto della card "Data" mettiamo la Ricerca prenotazione */}
             <div className="ui-card">
               <div className="text-sm text-slate-500 mb-2">Ricerca prenotazione</div>
               <SearchBookingButton />
             </div>
           </section>
 
-          {/* Presenti oggi / domani */}
+          {/* Presenti */}
           <section className="ui-grid-2">
             <div className="ui-card">
               <div className="ui-section-title mb-3">Presenti oggi</div>
@@ -351,7 +347,16 @@ export default function DashboardClient() {
                           Soggiorno {fmtDate(b.check_in)} → {fmtDate(b.check_out)} • {b.pax} pax
                         </div>
                       </div>
-                      <div className="text-sm">€ {Number(b.price ?? 0).toFixed(2)}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm">€ {Number(b.price ?? 0).toFixed(2)}</div>
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn-danger"
+                          onClick={() => handleDelete(b.id)}
+                        >
+                          Cancella
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -376,9 +381,7 @@ export default function DashboardClient() {
                     <tbody>
                       {departures.map(b => {
                         const paid = b.payment_status === 'PAID';
-                        const badgeCls = paid
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-rose-100 text-rose-800';
+                        const badgeCls = paid ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800';
                         return (
                           <tr key={b.id} className="border-t">
                             <td className="py-2 pr-3">#{b.rooms?.name ?? '—'}</td>

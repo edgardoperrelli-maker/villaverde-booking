@@ -1,3 +1,4 @@
+// src/app/bookings/page.tsx  (SERVER COMPONENT)
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
