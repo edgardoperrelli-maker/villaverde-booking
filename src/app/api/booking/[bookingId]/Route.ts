@@ -9,9 +9,9 @@ type BookingRow    = Database["public"]["Tables"]["bookings"]["Row"];
 // PATCH: aggiorna i campi (formData) per una prenotazione esistente
 export async function PATCH(
   req: Request,
-  { params }: { params: { bookingId: string } }
+  context: { params: Promise<{ bookingId: string }> }
 ) {
-  const id = params.bookingId; // UUID string
+  const { bookingId } = await context.params; // UUID string
 
   const form = await req.formData();
   const getStr = (k: string) => (form.has(k) ? String(form.get(k)) : undefined);
@@ -39,34 +39,38 @@ export async function PATCH(
   const { data: row, error } = await supabaseAdmin
     .from("bookings")
     .update(data)
-    .eq("id", id)
+    .eq("id", bookingId)
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
   return NextResponse.json(row as BookingRow);
 }
 
 // DELETE: SOFT DELETE → imposta deleted_at (finisce nel Cestino per 30 giorni)
 export async function DELETE(
   _req: Request,
-  { params }: { params: { bookingId: string } }
+  context: { params: Promise<{ bookingId: string }> }
 ) {
-  const id = params.bookingId; // UUID string
+  const { bookingId } = await context.params; // UUID string
 
   const patch: BookingUpdate = {
     // assicurati che la colonna esista in DB e nelle types
-    // (se non l’hai ancora fatta: ALTER TABLE ... ADD COLUMN deleted_at timestamptz)
+    // ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
     deleted_at: new Date().toISOString(),
   };
 
   const { data, error } = await supabaseAdmin
     .from("bookings")
     .update(patch)
-    .eq("id", id)
+    .eq("id", bookingId)
     .select("id, deleted_at")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
   return NextResponse.json({ ok: true, id: data?.id, deleted_at: data?.deleted_at });
 }
