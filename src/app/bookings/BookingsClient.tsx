@@ -438,25 +438,26 @@ export default function BookingsPage() {
   }
 
   // ------------------ Cancellazione (SOFT DELETE con doppia conferma) ------------------
-  async function handleDelete(): Promise<void> {
-    if (!isEdit || !editId) return;
-    if (!confirm('Confermi la cancellazione della prenotazione?')) return;
-    if (!confirm('⚠️ Conferma DEFINITIVA: la prenotazione finirà nel Cestino per 30 giorni.')) return;
+  
+async function handleDelete(): Promise<void> {
+  if (!isEdit || !editId) return;
+  if (!confirm('Confermi la cancellazione della prenotazione?')) return;
+  if (!confirm('⚠️ Conferma DEFINITIVA: la prenotazione finirà nel Cestino per 30 giorni.')) return;
 
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/booking/${editId}/cancel`, { method: 'POST' });
-      if (!res.ok) {
-        const j: { error?: string } | null = await res.json().catch(() => null);
-        alert(j?.error ?? res.statusText);
-        return;
-      }
-      alert('Prenotazione spostata nel Cestino.');
-      router.push('/dashboard');
-    } finally {
-      setDeleting(false);
+  setDeleting(true);
+  try {
+    const res = await fetch(`/api/booking/${editId}/cancel`, { method: 'POST' });
+    if (!res.ok) {
+      const j: { error?: string } | null = await res.json().catch(() => null);
+      alert(j?.error ?? res.statusText);
+      return;
     }
+    alert('Prenotazione spostata nel Cestino.');
+    router.push('/dashboard');
+  } finally {
+    setDeleting(false);
   }
+}
 
   // ------------------ UI ------------------
   return (
