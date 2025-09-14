@@ -6,10 +6,10 @@ type Row = {
   id: string;
   room: string;
   guest: string;
-  check_in: string;   // DD/MM/YYYY
-  check_out: string;  // DD/MM/YYYY
+  check_in: string;   // DD-MM-YYYY
+  check_out: string;  // DD-MM-YYYY
   pax: number;
-  price: string;
+  price: string;      // es. "120.00"
 };
 
 export default function SearchBookingButton() {
@@ -35,12 +35,15 @@ export default function SearchBookingButton() {
 
     try {
       const res = await fetch(`/api/booking/search?${params.toString()}`);
+      const body = (await res.json().catch(() => ({}))) as
+        | { results?: Row[]; error?: string }
+        | Record<string, never>;
+
       if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? res.statusText);
+        throw new Error('error' in body && typeof body.error === 'string' ? body.error : res.statusText);
       }
-      const j = (await res.json()) as { results: Row[] };
-      setRows(j.results ?? []);
+
+      setRows(Array.isArray(body.results) ? body.results : []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Errore di rete');
       setRows([]);
@@ -50,16 +53,15 @@ export default function SearchBookingButton() {
   }
 
   async function handleCancel(id: string) {
-    // doppia conferma
     if (!confirm('Sei sicuro di voler cancellare questa prenotazione?')) return;
     if (!confirm('Confermi di spostarla nel Cestino (recuperabile per 30 giorni)?')) return;
 
     setDeletingId(id);
     try {
       const res = await fetch(`/api/booking/${id}/cancel`, { method: 'POST' });
+      const body = (await res.json().catch(() => ({}))) as { error?: string } | Record<string, never>;
       if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? res.statusText);
+        throw new Error('error' in body && typeof body.error === 'string' ? body.error : res.statusText);
       }
       // ricarico la lista mantenendo i filtri correnti
       await handleSearch();

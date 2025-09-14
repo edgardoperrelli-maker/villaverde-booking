@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
+// ----------------------------- Tipi ------------------------------------
+
 type RateType = 'Singola' | 'Doppia' | 'Tripla' | 'Quadrupla';
 
 type Room = {
@@ -31,6 +33,19 @@ type Convention = {
   active: boolean;
 };
 
+type Item = {
+  roomId: string;
+  pax: number;
+  rateTypeRow: RateType;
+  conventionId: string | null;
+  price: number;
+  useMainGuest: boolean;
+  guestFirst?: string;
+  guestLast?: string;
+};
+
+// ----------------------------- Utils -----------------------------------
+
 function normalizeTypes(v: unknown): string[] {
   if (Array.isArray(v)) return v as string[];
   if (v == null) return [];
@@ -57,21 +72,12 @@ function paxToRateType(p: number): RateType {
   return 'Quadrupla';
 }
 
-type Item = {
-  roomId: string;
-  pax: number;
-  rateTypeRow: RateType;
-  conventionId: string | null;
-  price: number;
-  useMainGuest: boolean;
-  guestFirst?: string;
-  guestLast?: string;
-};
+// ----------------------------- Pagina ----------------------------------
 
 export default function BookingsPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const editId = search.get('id');          // <-- se presente, siamo in MODIFICA
+  const editId = search.get('id'); // se presente, siamo in MODIFICA
   const isEdit = Boolean(editId);
 
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -101,16 +107,17 @@ export default function BookingsPage() {
   const [newIndividualNotes, setNewIndividualNotes] = useState('');
 
   const [guestFirst, setGuestFirst] = useState('');
-  const [guestLast,  setGuestLast ] = useState('');
+  const [guestLast, setGuestLast] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
 
-  const [checkIn, setCheckIn]     = useState(''); // YYYY-MM-DD
-  const [checkOut, setCheckOut]   = useState('');
+  // YYYY-MM-DD per <input type="date">
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
   const [defaultPax, setDefaultPax] = useState(1);
 
   const [items, setItems] = useState<Item[]>([
-    { roomId: '', pax: 1, rateTypeRow: 'Singola', conventionId: null, price: 0, useMainGuest: true }
+    { roomId: '', pax: 1, rateTypeRow: 'Singola', conventionId: null, price: 0, useMainGuest: true },
   ]);
 
   const [showAllRooms, setShowAllRooms] = useState(false);
@@ -131,9 +138,9 @@ export default function BookingsPage() {
       ]);
 
       if (r1.error) setLoadError(`Errore rooms: ${r1.error.message}`);
-      if (r2.error) setLoadError(p => p ? p + ` | tariffe: ${r2.error!.message}` : `Errore tariffe: ${r2.error!.message}`);
-      if (r3.error) setLoadError(p => p ? p + ` | clienti: ${r3.error!.message}` : `Errore clienti: ${r3.error!.message}`);
-      if (r4.error) setLoadError(p => p ? p + ` | convenzioni: ${r4.error!.message}` : `Errore convenzioni: ${r4.error!.message}`);
+      if (r2.error) setLoadError(prev => (prev ? `${prev} | tariffe: ${r2.error!.message}` : `Errore tariffe: ${r2.error!.message}`));
+      if (r3.error) setLoadError(prev => (prev ? `${prev} | clienti: ${r3.error!.message}` : `Errore clienti: ${r3.error!.message}`));
+      if (r4.error) setLoadError(prev => (prev ? `${prev} | convenzioni: ${r4.error!.message}` : `Errore convenzioni: ${r4.error!.message}`));
 
       if (!r1.error && r1.data) {
         const normalized: Room[] = (r1.data as RoomDbRow[]).map(r => ({
@@ -151,70 +158,79 @@ export default function BookingsPage() {
     })();
   }, []);
 
+  // ------------------ Helpers ------------------
   function priceFromListino(rt: RateType): number {
     const r = rates.find(x => x.type === rt);
     return r ? Number(r.price) : 0;
   }
+
   function findConvention(id: string | null): Convention | undefined {
     if (!id) return undefined;
     return conventions.find(c => c.id === id);
   }
 
   function updateItem(idx: number, patch: Partial<Item>) {
-    setItems(prev => prev.map((it, i) => {
-      if (i !== idx) return it;
-      const next: Item = { ...it, ...patch };
+    setItems(prev =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const next: Item = { ...it, ...patch };
 
-      // cambio pax → ricalcolo tipo e prezzo
-      if (patch.pax !== undefined) {
-        const p = Math.min(4, Math.max(1, patch.pax));
-        next.pax = p;
-        const newRt = paxToRateType(p);
-        next.rateTypeRow = newRt;
+        // cambio pax → ricalcolo tipo e prezzo
+        if (patch.pax !== undefined) {
+          const p = Math.min(4, Math.max(1, patch.pax));
+          next.pax = p;
+          const newRt = paxToRateType(p);
+          next.rateTypeRow = newRt;
 
-        const conv = findConvention(next.conventionId);
-        if (conv && conv.rate_type !== newRt) {
-          next.conventionId = null;
-          next.price = priceFromListino(newRt);
-        } else {
-          next.price = conv ? Number(conv.price) : priceFromListino(newRt);
+          const conv = findConvention(next.conventionId);
+          if (conv && conv.rate_type !== newRt) {
+            next.conventionId = null;
+            next.price = priceFromListino(newRt);
+          } else {
+            next.price = conv ? Number(conv.price) : priceFromListino(newRt);
+          }
         }
-      }
 
-      // cambio convenzione → prezzo
-      if (patch.conventionId !== undefined) {
-        const conv = findConvention(patch.conventionId ?? null);
-        if (conv) {
-          if (conv.rate_type !== next.rateTypeRow) {
+        // cambio convenzione → prezzo
+        if (patch.conventionId !== undefined) {
+          const conv = findConvention(patch.conventionId ?? null);
+          if (conv) {
+            if (conv.rate_type !== next.rateTypeRow) {
+              next.conventionId = null;
+              next.price = priceFromListino(next.rateTypeRow);
+            } else {
+              next.conventionId = conv.id;
+              next.price = Number(conv.price);
+            }
+          } else {
             next.conventionId = null;
             next.price = priceFromListino(next.rateTypeRow);
-          } else {
-            next.conventionId = conv.id;
-            next.price = Number(conv.price);
           }
-        } else {
-          next.conventionId = null;
-          next.price = priceFromListino(next.rateTypeRow);
         }
-      }
-      return next;
-    }));
+
+        return next;
+      })
+    );
   }
 
   function addItem() {
     const p = Math.min(Math.max(defaultPax, 1), 4);
     const rt = paxToRateType(p);
-    setItems(prev => [...prev, {
-      roomId: '',
-      pax: p,
-      rateTypeRow: rt,
-      conventionId: null,
-      price: priceFromListino(rt),
-      useMainGuest: true
-    }]);
+    setItems(prev => [
+      ...prev,
+      {
+        roomId: '',
+        pax: p,
+        rateTypeRow: rt,
+        conventionId: null,
+        price: priceFromListino(rt),
+        useMainGuest: true,
+      },
+    ]);
   }
+
   function removeItem(idx: number) {
-    setItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+    setItems(prev => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
   }
 
   function roomOptionsForRow(rt: RateType): Room[] {
@@ -223,7 +239,7 @@ export default function BookingsPage() {
     return compat;
   }
 
-  const companies   = customers.filter(c => c.kind === 'company');
+  const companies = customers.filter(c => c.kind === 'company');
   const individuals = customers.filter(c => c.kind === 'individual');
 
   // ------------------ Modalità MODIFICA: precompila se ?id=... ------------------
@@ -241,19 +257,21 @@ export default function BookingsPage() {
       // Precompila campi principali
       setGuestFirst(data.guest_firstname ?? '');
       setGuestLast(data.guest_lastname ?? '');
-      setCheckIn(String(data.check_in).slice(0, 10));
+      setCheckIn(String(data.check_in).slice(0, 10)); // YYYY-MM-DD
       setCheckOut(String(data.check_out).slice(0, 10));
       setDefaultPax(Number(data.pax ?? 1));
 
       const rt = paxToRateType(Number(data.pax ?? 1));
-      setItems([{
-        roomId: String(data.room_id ?? ''),
-        pax: Number(data.pax ?? 1),
-        rateTypeRow: rt,
-        conventionId: null,
-        price: typeof data.price === 'number' ? data.price : 0,
-        useMainGuest: true,
-      }]);
+      setItems([
+        {
+          roomId: String((data as { room_id: string | number }).room_id ?? ''),
+          pax: Number(data.pax ?? 1),
+          rateTypeRow: rt,
+          conventionId: null,
+          price: typeof data.price === 'number' ? data.price : 0,
+          useMainGuest: true,
+        },
+      ]);
     })();
   }, [editId]);
 
@@ -261,34 +279,60 @@ export default function BookingsPage() {
   async function resolveCustomerId(): Promise<string | null> {
     if (kind === 'company') {
       if (useExistingCompany) {
-        if (!companyId) { alert('Seleziona una società esistente oppure crea una nuova.'); return null; }
+        if (!companyId) {
+          alert('Seleziona una società esistente oppure crea una nuova.');
+          return null;
+        }
         return companyId;
       } else {
-        if (!newCompanyName.trim()) { alert('Inserisci la ragione sociale.'); return null; }
-        const { data, error } = await supabase.from('customers').insert({
-          kind: 'company',
-          display_name: newCompanyName.trim(),
-          phone: newCompanyPhone || null,
-          email: newCompanyEmail || null,
-          notes: newCompanyNotes || null,
-        }).select('id').single();
-        if (error) { alert('Errore creazione anagrafica (società): ' + error.message); return null; }
+        if (!newCompanyName.trim()) {
+          alert('Inserisci la ragione sociale.');
+          return null;
+        }
+        const { data, error } = await supabase
+          .from('customers')
+          .insert({
+            kind: 'company',
+            display_name: newCompanyName.trim(),
+            phone: newCompanyPhone || null,
+            email: newCompanyEmail || null,
+            notes: newCompanyNotes || null,
+          })
+          .select('id')
+          .single();
+        if (error) {
+          alert('Errore creazione anagrafica (società): ' + error.message);
+          return null;
+        }
         return data!.id;
       }
     } else {
       if (useExistingIndividual) {
-        if (!individualId) { alert('Seleziona un privato esistente oppure crea una nuova anagrafica.'); return null; }
+        if (!individualId) {
+          alert('Seleziona un privato esistente oppure crea una nuova anagrafica.');
+          return null;
+        }
         return individualId;
       } else {
-        if (!newIndividualName.trim()) { alert('Inserisci Nome e Cognome del cliente.'); return null; }
-        const { data, error } = await supabase.from('customers').insert({
-          kind: 'individual',
-          display_name: newIndividualName.trim(),
-          phone: newIndividualPhone || null,
-          email: newIndividualEmail || null,
-          notes: newIndividualNotes || null,
-        }).select('id').single();
-        if (error) { alert('Errore creazione anagrafica (privato): ' + error.message); return null; }
+        if (!newIndividualName.trim()) {
+          alert('Inserisci Nome e Cognome del cliente.');
+          return null;
+        }
+        const { data, error } = await supabase
+          .from('customers')
+          .insert({
+            kind: 'individual',
+            display_name: newIndividualName.trim(),
+            phone: newIndividualPhone || null,
+            email: newIndividualEmail || null,
+            notes: newIndividualNotes || null,
+          })
+          .select('id')
+          .single();
+        if (error) {
+          alert('Errore creazione anagrafica (privato): ' + error.message);
+          return null;
+        }
         return data!.id;
       }
     }
@@ -296,32 +340,46 @@ export default function BookingsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (saving) return;
+    if (deleting) return; // evita conflitti
     setSaving(true);
-
     try {
-      if (!guestFirst.trim() || !guestLast.trim()) { alert('Inserisci nome e cognome dell’ospite principale.'); return; }
-      if (!guestPhone.trim() && !guestEmail.trim()) { alert('Telefono o email dell’ospite principale obbligatorio.'); return; }
-      if (!checkIn || !checkOut) { alert('Inserisci check-in e check-out.'); return; }
-      if (items.some(it => !it.roomId || it.pax < 1 || it.pax > 4)) { alert('Seleziona camera e pax (1–4) su ogni riga.'); return; }
+      if (!guestFirst.trim() || !guestLast.trim()) {
+        alert('Inserisci nome e cognome dell’ospite principale.');
+        return;
+      }
+      if (!guestPhone.trim() && !guestEmail.trim()) {
+        alert('Telefono o email dell’ospite principale obbligatorio.');
+        return;
+      }
+      if (!checkIn || !checkOut) {
+        alert('Inserisci check-in e check-out.');
+        return;
+      }
+      if (items.some(it => !it.roomId || it.pax < 1 || it.pax > 4)) {
+        alert('Seleziona camera e pax (1–4) su ogni riga.');
+        return;
+      }
 
       // --- MODIFICA: aggiorna una singola prenotazione (quella indicata da ?id) ---
       if (isEdit && editId) {
         const row = items[0];
-        if (!row) { alert('Dati riga non validi.'); return; }
+        if (!row) {
+          alert('Dati riga non validi.');
+          return;
+        }
 
         const fd = new FormData();
         fd.set('guest_firstname', guestFirst.trim());
-        fd.set('guest_lastname',  guestLast.trim());
-        fd.set('check_in',  checkIn);
+        fd.set('guest_lastname', guestLast.trim());
+        fd.set('check_in', checkIn);
         fd.set('check_out', checkOut);
-        fd.set('pax',   String(row.pax));
+        fd.set('pax', String(row.pax));
         fd.set('price', String(row.price));
 
         const res = await fetch(`/api/booking/${editId}`, { method: 'PATCH', body: fd });
         if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          alert(`Errore salvataggio: ${j.error ?? res.statusText}`);
+          const j: { error?: string } | null = await res.json().catch(() => null);
+          alert(`Errore salvataggio: ${j?.error ?? res.statusText}`);
           return;
         }
         alert('Prenotazione aggiornata.');
@@ -345,14 +403,14 @@ export default function BookingsPage() {
 
       const payloads = items.map(it => {
         const first = it.useMainGuest ? guestFirst.trim() : (it.guestFirst || '').trim();
-        const last  = it.useMainGuest ? guestLast.trim()  : (it.guestLast  || '').trim();
+        const last = it.useMainGuest ? guestLast.trim() : (it.guestLast || '').trim();
         if (!first || !last) throw new Error('Nome/Cognome mancanti su una riga camera con ospite diverso.');
         return {
           room_id: it.roomId,
           customer_id,
           kind,
           guest_firstname: first,
-          guest_lastname:  last,
+          guest_lastname: last,
           guest_phone: guestPhone.trim() || null,
           guest_email: guestEmail.trim() || null,
           check_in: checkIn,
@@ -380,23 +438,20 @@ export default function BookingsPage() {
   }
 
   // ------------------ Cancellazione (SOFT DELETE con doppia conferma) ------------------
-  async function handleDelete() {
-    if (!isEdit || !editId || deleting) return;
-
-    const first = window.confirm('Attenzione: vuoi davvero cancellare questa prenotazione?');
-    if (!first) return;
-    const second = window.confirm('Confermi la cancellazione? La prenotazione sarà spostata nel Cestino per 30 giorni.');
-    if (!second) return;
+  async function handleDelete(): Promise<void> {
+    if (!isEdit || !editId) return;
+    if (!confirm('Confermi la cancellazione della prenotazione?')) return;
+    if (!confirm('⚠️ Conferma DEFINITIVA: la prenotazione finirà nel Cestino per 30 giorni.')) return;
 
     setDeleting(true);
     try {
-      const res = await fetch(`/api/booking/${editId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/booking/${editId}/cancel`, { method: 'POST' });
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        alert(`Errore cancellazione: ${j.error ?? res.statusText}`);
+        const j: { error?: string } | null = await res.json().catch(() => null);
+        alert(j?.error ?? res.statusText);
         return;
       }
-      alert('Prenotazione cancellata. È stata spostata nel Cestino (auto-svuotamento dopo 30 giorni).');
+      alert('Prenotazione spostata nel Cestino.');
       router.push('/dashboard');
     } finally {
       setDeleting(false);
@@ -434,9 +489,7 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      {loadError && (
-        <div className="ui-card text-sm text-red-600">{loadError}</div>
-      )}
+      {loadError && <div className="ui-card text-sm text-red-600">{loadError}</div>}
 
       {loading ? (
         <div className="ui-card">Caricamento…</div>
@@ -449,19 +502,11 @@ export default function BookingsPage() {
 
               <div className="flex flex-wrap gap-6">
                 <label className="ui-switch">
-                  <input
-                    type="radio"
-                    checked={kind === 'individual'}
-                    onChange={() => setKind('individual')}
-                  />
+                  <input type="radio" checked={kind === 'individual'} onChange={() => setKind('individual')} />
                   Privato
                 </label>
                 <label className="ui-switch">
-                  <input
-                    type="radio"
-                    checked={kind === 'company'}
-                    onChange={() => setKind('company')}
-                  />
+                  <input type="radio" checked={kind === 'company'} onChange={() => setKind('company')} />
                   Società / Ditta
                 </label>
               </div>
@@ -544,11 +589,7 @@ export default function BookingsPage() {
                   {useExistingCompany ? (
                     <div>
                       <label className="ui-label">Seleziona società esistente</label>
-                      <select
-                        className="ui-select"
-                        value={companyId}
-                        onChange={e => setCompanyId(e.target.value)}
-                      >
+                      <select className="ui-select" value={companyId} onChange={e => setCompanyId(e.target.value)}>
                         <option value="">— Seleziona —</option>
                         {companies.map(c => (
                           <option key={c.id} value={c.id}>
@@ -742,11 +783,9 @@ export default function BookingsPage() {
                         className="ui-select"
                         value={it.conventionId ?? ''}
                         onChange={e => updateItem(idx, { conventionId: e.target.value || null })}
-                        disabled={isEdit || deleting} // in modifica manteniamo il prezzo caricato
+                        disabled={isEdit || deleting}
                       >
-                        <option value="">
-                          Listino standard ({RATE_LABEL[it.rateTypeRow]})
-                        </option>
+                        <option value="">Listino standard ({RATE_LABEL[it.rateTypeRow]})</option>
                         {convOpts.map(c => (
                           <option key={c.id} value={c.id}>
                             {c.name} — €{Number(c.price).toFixed(2)}
@@ -759,7 +798,7 @@ export default function BookingsPage() {
                       <label className="ui-label">Prezzo riga (€)</label>
                       <input
                         type="number"
-                        step="0.01"
+                        step={0.01}
                         min={0}
                         className="ui-input"
                         value={it.price}
@@ -787,12 +826,7 @@ export default function BookingsPage() {
 
             {!isEdit && (
               <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="ui-btn ui-btn-ghost"
-                  onClick={addItem}
-                  disabled={deleting}
-                >
+                <button type="button" className="ui-btn ui-btn-ghost" onClick={addItem} disabled={deleting}>
                   + Aggiungi camera
                 </button>
               </div>
@@ -800,9 +834,7 @@ export default function BookingsPage() {
           </div>
 
           <div className="flex justify-between items-center">
-            <div className="ui-hint">
-              Il prezzo riga segue pax e convenzione, ma può essere modificato manualmente.
-            </div>
+            <div className="ui-hint">Il prezzo riga segue pax e convenzione, ma può essere modificato manualmente.</div>
             <button className="ui-btn ui-btn-primary" disabled={saving || deleting}>
               {saving ? 'Salvataggio…' : isEdit ? 'Salva modifiche' : 'Salva prenotazione'}
             </button>
