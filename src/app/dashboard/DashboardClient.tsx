@@ -262,43 +262,47 @@ export default function DashboardClient() {
             </div>
           </section>
 
-          {/* Presenti */}
-          <section className="ui-grid-2">
-            <div className="ui-card">
-              <div className="ui-section-title mb-3">Presenti oggi</div>
-              {inHouseToday.length === 0 ? (
-                <div className="ui-hint">Nessuna camera presente oggi.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-slate-500">
-                        <th className="py-2 pr-3">Camera</th>
-                        <th className="py-2 pr-3">Ospite</th>
-                        <th className="py-2 pr-3">Soggiorno</th>
-                        <th className="py-2 pr-3 text-center">Colazione</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inHouseToday.map(b => (
-                        <tr key={b.id} className="border-t">
-                          <td className="py-2 pr-3">#{b.rooms?.name ?? '—'}</td>
-                          <td className="py-2 pr-3">{b.guest_firstname} {b.guest_lastname}</td>
-                          <td className="py-2 pr-3">{fmtDate(b.check_in)} → {fmtDate(b.check_out)}</td>
-                          <td className="py-2 pr-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(b.breakfast_done)}
-                              onChange={(e) => toggleBreakfast(b.id, e.target.checked)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+<div className="ui-card">
+  <div className="ui-section-title mb-3">Presenti oggi</div>
+  {inHouseToday.length === 0 ? (
+    <div className="ui-hint">Nessuna camera presente oggi.</div>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-slate-500">
+            <th className="py-2 pr-3">Camera</th>
+            <th className="py-2 pr-3">Ospite</th>
+            <th className="py-2 pr-3">Pax</th>
+            <th className="py-2 pr-3">Soggiorno</th>
+            <th className="py-2 pr-3 text-center">Colazione</th>
+          </tr>
+        </thead>
+        <tbody>
+          {inHouseToday.map((b) => (
+            <tr key={b.id} className="border-t">
+              <td className="py-2 pr-3">#{b.rooms?.name ?? '—'}</td>
+              <td className="py-2 pr-3">
+                {b.guest_firstname} {b.guest_lastname}
+              </td>
+              <td className="py-2 pr-3">{b.pax}</td>
+              <td className="py-2 pr-3">
+                {fmtDate(b.check_in)} → {fmtDate(b.check_out)}
+              </td>
+              <td className="py-2 pr-3 text-center">
+                <input
+                  type="checkbox"
+                  checked={Boolean(b.breakfast_done)}
+                  onChange={(e) => toggleBreakfast(b.id, e.target.checked)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
 
             <div className="ui-card">
               <div className="ui-section-title mb-3">Presenti domani</div>
@@ -327,7 +331,7 @@ export default function DashboardClient() {
                 </div>
               )}
             </div>
-          </section>
+         
 
           {/* Arrivi / Partenze */}
           <section className="ui-grid-2">
