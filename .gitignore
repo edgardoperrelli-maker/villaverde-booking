@@ -9,3 +9,9 @@ coverage/
 .DS_Store
 Thumbs.db
 .vercel
+node_modules/
+.next/
+.vercel/
+*.log
+*.tsbuildinfo
+backups/
